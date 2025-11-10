@@ -1,0 +1,255 @@
+---
+title: "Project Draft note"
+subtitle: "Non-Gaussian and Gaussian Process for Interpolation"
+author: Fuad Hasan and Zijie (Ian) Liang
+date: "2025-11-10"
+type: "Project"
+objectives:
+  - "Show the interpolation definition"
+  - "Inverse Distance Weighting Interpolation"
+  - "KNN Method"
+
+engine: julia
+
+format:
+  html:
+    toc: true
+    toc-depth: 2
+    code-block-bg: "#f8f8f8"
+    code-block-border-left: "#e1e4e5"
+    theme: simplex
+    number-sections: true
+    fig-format: png
+  typst:
+    fontsize: 11pt
+    margin:
+      x: 1in
+      y: 1in
+    number-sections: true
+    fig-format: png
+
+execute:
+  cache: true
+  freeze: auto
+
+# Code formatting options
+code-overflow: wrap
+code-line-numbers: false
+code-block-font-size: "0.85em"
+---
+
+# Code Setup
+
+Begin with project management:
+
+```{julia}
+#| output: false
+using Pkg
+lab_dir = dirname(@__FILE__)
+Pkg.activate(lab_dir)
+Pkg.instantiate() # uncomment this the first time you run the lab to install packages, then comment it back
+```
+
+Load all required packages:
+
+```{julia}
+using Distances # use to compute pairwise Euclidean distance
+using Interpolations
+using Distributions
+using GaussianProcesses # for the useful syntax
+using LaTeXStrings
+using LinearAlgebra
+using Optim
+using Plots
+using Random
+```
+
+
+# Background and Reading
+
+This is the draft note for our porject. In this draft we discussed the important contents included the definition of interpolation, multiple interpolation methods, and 1D Gaussian method for the interpolation.
+
+
+# Interpolation Motivation
+
+When testing the environmental data, sometimes we are interested in the nearby data. The normal operation is to used the observation to predict/simulate the surroundance data that we haven't observed. Take the following examples:
+1. Rainfall: Only a few rain gauges cover a watershed, but we need the rainfall data for the whole watershed to drive hydrologic models;
+2. Temperature or Air Quality: Satellite retrievals are patchy or have missing pixels so we need to fill gaps;
+3. Urban Planning/Infrastructure: Sensor data (traffic, vibration, flood depth) are discrete but need continuuous spatial representation.
+
+## Example
+
+With the help by the note from Dr. James Doss-Gollin's previous class, we generate some basic model as example to show the interpolation example and basic concept.
+
+```{julia}
+f(t) = @. sin(2 * pi * t / 7.2 + 0.9) + sin(2 * pi * t / 2/5 + 1.3)
+
+begin
+    N = 25            # number of observations
+    σy = 0.25         # noise parameter
+    x0 = 0            # lower bound
+    x1 = 10           # upper bound
+    Random.seed!(70005)              # set seed
+    x = sort(rand(Uniform(x0, x1), N))      # points we observe at
+    xprime = collect(range(x0, x1, length=1000))   # locations to estimate
+    y = f.(x) .+ rand(Normal(0, σy), N)            # observed values with noise
+    baseplot = plot(xlabel=L"$x$", ylabel=L"$y(t)$", legend=:bottomright)
+end
+
+p = deepcopy(baseplot)
+plot!(p, xprime, f.(xprime), label="True Values")
+scatter!(p, x, y, label="Observed Points")
+
+```
+
+Without the blue line, how do we predict the point between `x = 2.5` and `x = 5.0`? We could use interpolation to simulate the observation.
+
+# Non-Gaussian Process
+
+## Interpolation
+
+In order to do the prediction, the simplest way is to try a linear interpolation. Linear interpolation estimates the value of a function between two known data points by assuming the change between them is linear (a straight line).
+If the function is known at points $(x_1, y_1)$ and $(x_2, y_2)$, then for any $x$ between them:
+$$y(x) = y_1 + \frac{(y_2 - y_1)}{(x_2 - x_1)} (x - x_1)$$
+
+The most important thing here is connecting the dots. If we have high density data, which are unbiased estimates, the model works well. However, if the data size is small, the predition will not perfom well.
+
+```{julia}
+itp_linear = LinearInterpolation(x, y; extrapolation_bc = Line())
+f_linear(x) = itp_linear(x)
+p = deepcopy(baseplot)
+scatter!(p, x, y, label = "Observed")
+plot!(p, f, x0, x1, label = L"$f(x)$")
+plot!(f_linear, xprime, label = "Linear interpolation")
+
+```
+
+
+## Inverse Distance Weighting Interpolation
+
+Inverse Distance Weighting (IDW) is a simple and widely used spatial interpolation method.  
+It predicts the value at an unknown location as a `weighted average` of known data points,  
+where weights depend on the `distance` between points — closer points have higher influence.
+
+Mathematically, the predicted value $\hat{z}(x_0)$ at location $x_0$ is given by:
+
+$$
+\hat{z}(x_0) = \frac{\displaystyle\sum_{i=1}^{N} w_i \, z(x_i)}{\displaystyle\sum_{i=1}^{N} w_i}
+$$
+
+where the weights $w_i$ are defined as:
+
+$$
+w_i = \frac{1}{d(x_0, x_i)^p}
+$$
+
+Here:  
+- $z(x_i)$ = known value at location $x_i$  
+- $d(x_0, x_i)$ = distance between $x_0$ and $x_i$ (usually Euclidean)  
+- $p$ = power parameter controlling how quickly influence decreases with distance  
+  - Small $p$ → smoother interpolation  
+  - Large $p$ → closer points dominate  
+
+The weights are normalized so that they sum to 1:
+
+$$
+\sum_{i=1}^{N} w_i = 1
+$$
+
+IDW is deterministic and easy to compute, but it assumes the spatial relationship depends only on distance —  
+it does not provide uncertainty estimates or account for directional trends.
+
+```{julia}
+calc_dist(x1, x2) = Distances.pairwise(Distances.Euclidean(), x1, x2)
+
+function idw(x, y, xprime) where T <: Real
+ dist = Distances.pairwise(Distances.Euclidean(), x, xprime)
+ weights = dist .^ (-2)
+ weights_norm = weights ./ sum(weights, dims = 1)
+ return weights_norm' * y
+    
+end
+
+yprime = idw(x, y, xprime)
+p = deepcopy(baseplot)
+plot!(p, f, x0, x1, label = "Ture values")
+scatter!(p, x, y, label = "observed Points")
+plot!(p, xprime, yprime, label = "Predicted (IDW)")
+```
+
+Since we have some good observations, the model prediction is really well. There are some weird vibration due to the high concentration of the data in a small area. 
+
+## K Nearest Neighbors (KNN)
+
+`K Nearest Neighbors (KNN)` is a variation of the Inverse Distance Weighting (IDW) method.  
+Instead of using *all* available data points, KNN considers only the `K closest points` around the prediction location.  
+This helps reduce the influence of faraway points, making the interpolation more local and often more accurate.
+
+Let $\hat{z}(x_0)$ be the predicted value at an unknown location $x_0$.  
+Among all $N$ known points $(x_i, z(x_i))$, we first find the $K$ nearest neighbors based on the distance $d(x_0, x_i)$.
+
+The prediction is then computed as a weighted average over these $K$ neighbors:
+
+$$
+\hat{z}(x_0) = 
+\frac{\displaystyle\sum_{i=1}^{K} w_i \, z(x_i)}
+     {\displaystyle\sum_{i=1}^{K} w_i}
+$$
+
+where the weights are defined using the same distance-decay principle as IDW:
+
+$$
+w_i = \frac{1}{d(x_0, x_i)^p}
+$$
+
+Here:  
+- $d(x_0, x_i)$ = distance between the prediction point and the $i$-th neighbor  
+- $p$ = power parameter controlling the rate of distance decay  
+- $K$ = number of nearest neighbors used for interpolation  
+
+By setting all weights outside the $K$ nearest points to zero before normalization,  
+the KNN interpolation limits the effect of distant data, improving computational efficiency  
+and reducing unrealistic “global” influence in sparse datasets.
+
+```{julia}
+function knn(x, y, xprime, K) where T <: Real
+ dist = Distances.pairwise(Distances.Euclidean(), x, xprime)
+ weights = dist .^ (-2)
+
+ # truncate some weights to zero
+ranks = hcat([invperm(sortperm(col; rev = true)) for col in eachcol(weights)]...)
+    weights[ranks .> K] .= 0
+
+    # normalize
+    weights_norm = weights ./ sum(weights, dims = 1)
+    return weights_norm' * y
+
+end
+
+```
+
+So now with $K$ = $N$, the IDW estimation will be
+```{julia}
+K = N
+yprime = knn(x, y, xprime, K)
+p = deepcopy(baseplot)
+plot!(p, f, x0, x1, label = "True Values", title = "K=N")
+scatter!(p, x, y, label = "Observed Points")
+plot!(p, xprime, yprime, label = "Prediction (KNN)")
+
+```
+
+What if we reduce the number of $K$, the estimation will be changed again
+```{julia}
+K = 3
+yprime = knn(x, y, xprime, K)
+p = deepcopy(baseplot)
+plot!(p, f, x0, x1, label = "True Values", title = "K=$K")
+scatter!(p, x, y, label = "Observed Points")
+plot!(p, xprime, yprime, label = "Prediction (KNN)")
+
+```
+
+The prediction line looks wired when the `K` value changed. There are another method to run the interpolation like the high-order polynomial. However, one of the best way for the estimation is `Gaussian Processes`.
+
+TO be continued....
