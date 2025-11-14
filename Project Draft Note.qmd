@@ -383,3 +383,80 @@ In Gaussian Process, we assume the function has a constant mean (μ), meaning bo
 a = μ         # mean for test points.
 b = μ         # mean for training points
 
+```{julia}
+import Pkg; Pkg.add("Plots")
+using LinearAlgebra
+using Random
+using Plots
+
+# Squared-exponential kernel, let σ_f=1.0, ℓ=1.0
+
+kernel(x1, x2; σ_f=1.0, ℓ=1.0) = σ_f^2 * exp(-(x1 - x2)^2 / (2ℓ^2))
+
+# Build full kernel matrix for a vector
+function kernel_matrix(x1, x2; σ_f=1.0, ℓ=1.0)
+    K = zeros(length(x1), length(x2))
+    for i in 1:length(x1)
+        for j in 1:length(x2)
+            K[i,j] = kernel(x1[i], x2[j]; σ_f=σ_f, ℓ=ℓ)
+        end
+    end
+    return K
+end
+
+#  GP Prediction (y' | y)
+
+function gp_predict(x, y, xnew; σ_f=1.0, ℓ=1.0, σ_n=0.1)
+    # Build blocks A, B, C from GP theory
+    A = kernel_matrix(xnew, xnew; σ_f=σ_f, ℓ=ℓ)          # M × M
+    B = kernel_matrix(xnew, x;     σ_f=σ_f, ℓ=ℓ)          # M × N
+    C = kernel_matrix(x,     x;     σ_f=σ_f, ℓ=ℓ)          # N × N
+
+    # Add noise to C
+    C += σ_n^2 * I
+
+    # Posterior mean:  m = B * C^{-1} * y
+    μ = B * (C \ y)
+
+    # Posterior covariance: S = A - B C^{-1} Bᵀ
+    Σ = A - B * (C \ B')
+
+    # Uncertainty (std dev)
+    σ = sqrt.(diag(Σ))
+
+    return μ, σ
+end
+
+
+# Training data (observed)
+
+Random.seed!(1)
+f(x) = sin.(x) .+ 0.4*cos.(2x)                   # true function
+
+x = collect(range(0, 10, length=15))
+y = f(x) .+ 0.25 .* randn(length(x))             # noisy observations
+
+
+# Prediction points (many)
+
+xnew = collect(range(0, 10, length=300))
+
+#  Run GP
+
+μ, σ = gp_predict(x, y, xnew; σ_f=1.0, ℓ=1.2, σ_n=0.25)
+
+#  Plot
+
+plot(xnew, μ, lw=3, color=:blue, label="GP Mean")
+plot!(xnew, μ .+ 2σ, fillrange=μ .- 2σ, color=:blue, alpha=0.25, label="±2σ")
+
+plot!(xnew, f(xnew), lw=2, color=:red, label="True Function")
+scatter!(x, y, color=:green, ms=5, label="Observed")
+
+xlabel!("x")
+ylabel!("y")
+title!("1D Gaussian Process Regression")
+
+```
+
+The final draft will include the 2D gaussian process and more graphs, we are working on that
