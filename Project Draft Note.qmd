@@ -47,7 +47,7 @@ Begin with project management:
 using Pkg
 lab_dir = dirname(@__FILE__)
 Pkg.activate(lab_dir)
-Pkg.instantiate() # uncomment this the first time you run the lab to install packages, then comment it back
+# Pkg.instantiate() # uncomment this the first time you run the lab to install packages, then comment it back
 ```
 
 Load all required packages:
@@ -62,6 +62,7 @@ using LinearAlgebra
 using Optim
 using Plots
 using Random
+
 ```
 
 
@@ -252,7 +253,7 @@ plot!(p, xprime, yprime, label = "Prediction (KNN)")
 
 The prediction line looks wired when the `K` value changed. There are another method to run the interpolation like the high-order polynomial. However, one of the best way for the estimation is `Gaussian Processes`.
 
-# 1D Gaussian process
+# 1D Gaussian Process
 
 Until this portion, we have seen the non-gaussian process.The orange dots were the observed points that has obviously some noise(as say discahrge measurement will have some noise, a discharge value we are saying 22, maybe 22.4) and blue line in the previous graphs was the true underlying function that can fit the observed data best(say fitting the discharge value). But, in reality we actually don't know how the blue line will look like.  And also, in most regression methods, we assume that y = aX + b. The thing is that, all of these methods just give a single best-fit curve (green curves). Here, the Gaussian process comes handy. We can call it a Bayesian way of modeling nonlinear relationships. It allows us to fit a family of smooth curves to the data, rather than trying to fit the data with a single line (i.e., in linear regression), while also providing a measure of uncertainty at every point.
 
@@ -266,7 +267,7 @@ So, in this kind of scenario, a Gaussian process can come in handy. If we have s
 What do we understand from this? In general, the GP doesn’t assume that there is a fixed equation like say y=aX+b, rather, they consider the function(function means it randomly take some curve from gaussian distribution) itself to be random, nearby points are correlated (determined through a kernel function), to smoothly predict what is happening between prediction/testing data points where we don’t have any observation, and show how uncertain those predictions are.
 
 ## Steps of 1D Gaussian Process
-### 1. GP Prior Assumption
+### GP Prior Assumption
 
 We assume the function $f(x)$ we’re trying to learn is drawn from a **Gaussian Process**:
 
@@ -309,7 +310,7 @@ $$
 
 
 
-##  2. Meaning of Each Symbol
+### Meaning of Each Symbol
 
 | **Symbol** | **Meaning** | **Size** |
 |:------------|:------------|:----------|
@@ -323,7 +324,7 @@ $$
 | $\sigma_y^2 I$ | observation-noise term | $N \times N$ |
 
 
-### 3. Kernel Function
+## Kernel Function
 
 We use the **squared-exponential (RBF)** kernel:
 
@@ -340,7 +341,7 @@ where:
 - $\ell$: **length scale** (controls smoothness — small $\ell$ means wiggly function that change rapidly, large $\ell$ means smooth function changing slowly)...
 $\el$ if x and x' are close enough, that means points $\el$ will have high covariance, points that are far, $\el$ will have low covariance
 
-## 4.6.3 Kernel Parameters
+## Kernel Parameters
 
 Of course, we don’t initially know what **σ (signal variance)** or **ℓ (length scale)** should be — 
 we just guess some starting values. The Gaussian Process then uses the training data to 
@@ -351,7 +352,7 @@ stops improving. To keep the optimization stable and ensure both parameters rema
 we usually optimize over **log(σ)** and **log(ℓ)** instead of their direct values. 
 The final optimized σ and ℓ describe how variable and how smooth the data is, respectively.
 
-## 4.6. 4. Prediction (Posterior Distribution)
+## Prediction (Posterior Distribution)
 
 The conditional (posterior) distribution of the **test outputs** `y′` given the **training outputs** `y` is **Gaussian**:
 
@@ -384,11 +385,6 @@ a = μ         # mean for test points.
 b = μ         # mean for training points
 
 ```{julia}
-import Pkg; Pkg.add("Plots")
-using LinearAlgebra
-using Random
-using Plots
-
 # Squared-exponential kernel, let σ_f=1.0, ℓ=1.0
 
 kernel(x1, x2; σ_f=1.0, ℓ=1.0) = σ_f^2 * exp(-(x1 - x2)^2 / (2ℓ^2))
@@ -459,4 +455,114 @@ title!("1D Gaussian Process Regression")
 
 ```
 
-The final draft will include the 2D gaussian process and more graphs, we are working on that
+
+# 2D Gaussian Process
+## Introduction
+
+When we try to analysis the Gaussian Process with the spatial data, simple 1D method is not enough to help. The data now have elevation so the plot need to include z axis, which make the plot into 3D. In this way, 2D Gaussian Process is a good choice to use.
+
+2D Gaussian Process is similar to 1D GP so we could have similar process
+1. Choose a kernel depending on the relative of our data (2D)
+2. Optimize the parameters of the kernel
+3. Use the multivariate Normal to make predictions about the new data
+
+Take the following examples:
+
+```{julia}
+f(x, y) = @. sin(2 * π * x / 10 + 0.9) * cos(2 * π * y / 15.0 + 1.3)
+surface(0:0.1:10, 0:0.1:10, f; xlabel=L"$x$", ylabel=L"$y$", zlabel=L"$f(x,y)$")
+```
+
+```{julia}
+begin
+    N = 100 # number of observations
+    σy = 0.125 # noise parameter
+    xlims = (0, 10)
+    ylims = (0, 10)
+    Random.seed!(77005) # set seed
+    x = rand(Uniform(xlims...), N) # points we observe at
+    y = rand(Uniform(xlims...), N) # points we observe at
+    z = f.(x, y) .+ rand(Normal(0, σy), N) # values we observe
+    baseplot = plot(; xlabel=L"$x$", ylabel=L"$y$") # for plots
+end
+
+let
+    p = deepcopy(baseplot)
+    contour!(p, 0:0.1:10, 0:0.1:10, f)
+    scatter!(p, x, y; zcolor=z, colorbar_title=L"$z$", title="Observed Points", label=false)
+end
+
+```
+
+## Distance
+
+Distance is an important aspect to consider when we do the GP. Euclidean distance is a simple method but this isn't always the right choice – for example, if we're working with spherical coordinates. There we might want to use something like Haversine distance, which measure the Great Circle distance between two points.
+
+For now we'll stick to Euclidean distance for simplicity. Note that we specify `dims=1` so that the distances gives us the right shape (otherwise it wants to treat each column as an observation and each row as a feature, which is backwards) 
+
+```{julia}
+calc_dist(x1, x2) = Distances.pairwise(Distances.Euclidean(), x1, x2; dims=1)
+points = hcat(x, y)
+
+D_x_x = calc_dist(points, points) # should be N x N
+
+```
+
+## 2D GP
+
+In order to build a GP, we need to specify:
+1. A kernel
+2. A mean function
+3. A noise parameter $\sigma_y$
+
+```{julia}
+let
+    σy = 0.25
+    ℓ = 2.5
+    σ = 2.5
+
+    xy = vcat(x', y')
+    kern = GaussianProcesses.SE(log(ℓ), log(σ)) # note: log σ, log ℓ
+    μ = GaussianProcesses.MeanZero()
+    gp = GP(xy, z, μ, kern, log(σy))
+    p1 = deepcopy(baseplot)
+    plot!(p1, gp; title="Mean of GP", fill=true)
+    scatter!(
+        p1, x, y; zcolor=z, label=false, markerstrokecolor=:white, markerstrokewidth=0.5
+    )
+    p2 = deepcopy(baseplot)
+    contour!(p2, 0:0.1:10, 0:0.1:10, f; title="True Value", fill=true)
+    plot(p1, p2; size=(800, 400))
+end
+
+```
+
+We can use stable built-in optimization methods. (There are some well-known numerical issues that Gaussian Process models can run into, and avoiding them takes luck or skill or both).
+
+```{julia}
+gp3 = let
+    xy = vcat(x', y')
+    kern = GaussianProcesses.SE(0.0, 0.0) # note: log σ, log ℓ
+    μ = GaussianProcesses.MeanZero()
+    gp = GP(xy, z, μ, kern, log(σy))
+    optimize!(gp) # piece of cake!
+    gp
+end
+
+
+let
+    p1 = deepcopy(baseplot)
+    plot!(p1, gp3; title="Mean of GP", fill=true)
+    p2 = deepcopy(baseplot)
+    contour!(p2, 0:0.1:10, 0:0.1:10, f; title="True Value", fill=true)
+    p3 = deepcopy(baseplot)
+    scatter!(
+        p1, x, y; zcolor=z, label=false, markerstrokecolor=:white, markerstrokewidth=0.5
+    )
+    plot!(p3, gp3; title="Variance of GP", fill=true, var=true)
+    p4 = deepcopy(baseplot)
+    scatter!(p4, x, y; zcolor=z, title="Points Sampled", label=false)
+    plot(p1, p2, p3, p4; size=(800, 600), link=:both)
+end
+
+```
