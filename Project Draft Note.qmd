@@ -1,13 +1,18 @@
 ---
 title: "Project Draft note"
-subtitle: "Non-Gaussian and Gaussian Process for Interpolation"
+subtitle: "Non-Gaussian and Gaussian Process for Regression"
 author: Fuad Hasan and Zijie (Ian) Liang
 date: "2025-11-10"
 type: "Project"
+
+bibliography: references.bib
+
 objectives:
-  - "Show the interpolation definition"
+  - "Show the Regression definition"
   - "Inverse Distance Weighting Interpolation"
   - "KNN Method"
+  - "1D Gaussian Process for Regression"
+  - "2D Gaussian Process for Regression"
 
 engine: julia
 
@@ -68,10 +73,10 @@ using Random
 
 # Background and Reading
 
-This is the draft note for our porject. In this draft we discussed the important contents included the definition of interpolation, multiple interpolation methods, and 1D Gaussian method for the interpolation.
+This is the draft note for our project. In this project we will discuss the important contents included the definition of regression, multiple Non-Gaussian regression methods, 1D Gaussian method for the regression, and 2D Gaussian methoed. 
 
 
-# Interpolation Motivation
+# Regression Motivation
 
 When testing the environmental data, sometimes we are interested in the nearby data. The normal operation is to used the observation to predict/simulate the surroundance data that we haven't observed. Take the following examples:
 1. Rainfall: Only a few rain gauges cover a watershed, but we need the rainfall data for the whole watershed to drive hydrologic models;
@@ -80,7 +85,7 @@ When testing the environmental data, sometimes we are interested in the nearby d
 
 ## Example
 
-With the help by the note from Dr. James Doss-Gollin's previous class, we generate some basic model as example to show the interpolation example and basic concept.
+With the help by the note from Dr. James Doss-Gollin's previous class @JamesDoss-Gollin2022GP, we generate some basic model as example to show the interpolation regression example and basic concept.
 
 ```{julia}
 f(t) = @. sin(2 * pi * t / 7.2 + 0.9) + sin(2 * pi * t / 2/5 + 1.3)
@@ -105,7 +110,7 @@ scatter!(p, x, y, label="Observed Points")
 
 Without the blue line, how do we predict the point between `x = 2.5` and `x = 5.0`? We could use interpolation to simulate the observation.
 
-# Non-Gaussian Process
+# Non-Gaussian Process For Regression
 
 ## Interpolation
 
@@ -113,7 +118,7 @@ In order to do the prediction, the simplest way is to try a linear interpolation
 If the function is known at points $(x_1, y_1)$ and $(x_2, y_2)$, then for any $x$ between them:
 $$y(x) = y_1 + \frac{(y_2 - y_1)}{(x_2 - x_1)} (x - x_1)$$
 
-The most important thing here is connecting the dots. If we have high density data, which are unbiased estimates, the model works well. However, if the data size is small, the predition will not perfom well.
+The most important thing here is connecting the dots. If we have high density data, which are unbiased estimates, the model works well. However, if the data size is small, the predition will not perfom well @SunChao2020SoSI.
 
 ```{julia}
 itp_linear = LinearInterpolation(x, y; extrapolation_bc = Line())
@@ -128,11 +133,7 @@ plot!(f_linear, xprime, label = "Linear interpolation")
 
 ## Inverse Distance Weighting Interpolation
 
-Inverse Distance Weighting (IDW) is a simple and widely used spatial interpolation method.  
-It predicts the value at an unknown location as a `weighted average` of known data points,  
-where weights depend on the `distance` between points — closer points have higher influence.
-
-Mathematically, the predicted value $\hat{z}(x_0)$ at location $x_0$ is given by:
+Inverse Distance Weighting (IDW) is a simple and widely used spatial interpolation method @MeiGang2016IGaI. It predicts the value at an unknown location as a `weighted average` of known data points, where weights depend on the `distance` between points — closer points have higher influence.Mathematically, the predicted value $\hat{z}(x_0)$ at location $x_0$ is given by:
 
 $$
 \hat{z}(x_0) = \frac{\displaystyle\sum_{i=1}^{N} w_i \, z(x_i)}{\displaystyle\sum_{i=1}^{N} w_i}
@@ -157,8 +158,7 @@ $$
 \sum_{i=1}^{N} w_i = 1
 $$
 
-IDW is deterministic and easy to compute, but it assumes the spatial relationship depends only on distance —  
-it does not provide uncertainty estimates or account for directional trends.
+IDW is deterministic and easy to compute, but it assumes the spatial relationship depends only on distance — it does not provide uncertainty estimates or account for directional trends.
 
 ```{julia}
 calc_dist(x1, x2) = Distances.pairwise(Distances.Euclidean(), x1, x2)
@@ -182,9 +182,7 @@ Since we have some good observations, the model prediction is really well. There
 
 ## K Nearest Neighbors (KNN)
 
-`K Nearest Neighbors (KNN)` is a variation of the Inverse Distance Weighting (IDW) method.  
-Instead of using *all* available data points, KNN considers only the `K closest points` around the prediction location.  
-This helps reduce the influence of faraway points, making the interpolation more local and often more accurate.
+`K Nearest Neighbors (KNN)` is a variation of the Inverse Distance Weighting (IDW) method @ZhangShichao2022CiKC. Instead of using *all* available data points, KNN considers only the `K closest points` around the prediction location. This helps reduce the influence of faraway points, making the interpolation more local and often more accurate.
 
 Let $\hat{z}(x_0)$ be the predicted value at an unknown location $x_0$.  
 Among all $N$ known points $(x_i, z(x_i))$, we first find the $K$ nearest neighbors based on the distance $d(x_0, x_i)$.
@@ -255,16 +253,17 @@ The prediction line looks wired when the `K` value changed. There are another me
 
 # 1D Gaussian Process
 
-Until this portion, we have seen the non-gaussian process.The orange dots were the observed points that has obviously some noise(as say discahrge measurement will have some noise, a discharge value we are saying 22, maybe 22.4) and blue line in the previous graphs was the true underlying function that can fit the observed data best(say fitting the discharge value). But, in reality we actually don't know how the blue line will look like.  And also, in most regression methods, we assume that y = aX + b. The thing is that, all of these methods just give a single best-fit curve (green curves). Here, the Gaussian process comes handy. We can call it a Bayesian way of modeling nonlinear relationships. It allows us to fit a family of smooth curves to the data, rather than trying to fit the data with a single line (i.e., in linear regression), while also providing a measure of uncertainty at every point.
+Until this portion, we have seen the non-gaussian process.The orange dots were the observed points that has obviously some noise(as say discharge measurement will have some noise, a discharge value we are saying 22, maybe 22.4) and blue line in the previous graphs was the true underlying function that can fit the observed data best(say fitting the discharge value). But, in reality we actually don't know how the blue line will look like.  And also, in most regression methods, we assume that y = aX + b. The thing is that, all of these methods just give a single best-fit curve (green curves). Here, the Gaussian process comes handy. We can call it a Bayesian way of modeling nonlinear relationships. Before seeing the data (prior), many possible functions are considered. After seeing the data, the curves that pass close to the observed points receive higher likelihood, so the uncertainty shrinks near those points (posterior).
 
-What are the advantages of a Gaussian process?
-## Say with some real example, we have some air temperature readings in some stations. But we want to estimate the temperature between two stations. Or, say, we measure river discharge at some points at times t = 1, 3, and 5 hours. But we want to know what happened at t=2 and 4 hours(testing/prediction points)? In the first case, the nearby points will have a similar kind of temperature (spatial relation), and in case number 2, the nearby times will have a similar kind of discharge (temporal correlation).
+How Gaussian process can be useful?
+
+Ans: Say with some real example, we have some air temperature readings in some stations. But we want to estimate the temperature between two stations. Or, say, we measure river discharge at some points at times t = 1, 3, and 5 hours. But we want to know what happened at t=2 and 4 hours(testing/prediction points)? In the first case, the nearby points will have a similar kind of temperature (spatial relation), and in case number 2, the nearby times will have a similar kind of discharge (temporal correlation).
 
 So, in this kind of scenario, a Gaussian process can come in handy. If we have some observed data, and we want to predict what happened in unknown data points, this GP process can:
-1.  Naturally handle the spatial and temporal relationship.
+$1.$  Naturally handle the spatial and temporal relationship.
 2.  Can provide smooth interpolation between known points.
-3.  Also, can quantify uncertainty.
-What do we understand from this? In general, the GP doesn’t assume that there is a fixed equation like say y=aX+b, rather, they consider the function(function means it randomly take some curve from gaussian distribution) itself to be random, nearby points are correlated (determined through a kernel function), to smoothly predict what is happening between prediction/testing data points where we don’t have any observation, and show how uncertain those predictions are.
+What do we understand from this? In general, the GP doesn’t assume that there is a fixed equation like say y=aX+b, rather, they consider the function(function means it randomly take some curve from gaussian distribution) itself to be random, nearby points are correlated (determined through a kernel function), to smoothly predict what is happening between prediction/testing data points where we don’t have any observation, and show how uncertain band of those predictions.
+
 
 ## Steps of 1D Gaussian Process
 ### GP Prior Assumption
@@ -308,8 +307,6 @@ B^T & C
 $$
 
 
-
-
 ### Meaning of Each Symbol
 
 | **Symbol** | **Meaning** | **Size** |
@@ -337,13 +334,30 @@ $$
 
 where:
 
-- $\sigma^2$: **signal variance** (controls amplitude) - How high or low a curve can go  
-- $\ell$: **length scale** (controls smoothness — small $\ell$ means wiggly function that change rapidly, large $\ell$ means smooth function changing slowly)...
-$\el$ if x and x' are close enough, that means points $\el$ will have high covariance, points that are far, $\el$ will have low covariance
+- $\sigma^2$: **signal variance** (controls amplitude) - How high or low a curve can go.  
+- $\ell$: **length scale** (controls smoothness - Small $\ell$ means wiggly function that change rapidly, large $\ell$ means smooth function changing slowly).
 
-## Kernel Parameters
+if x and x' are close enough, that means points will have high covariance, points that are far, will have low covariance.
 
-Of course, we don’t initially know what **σ (signal variance)** or **ℓ (length scale)** should be — 
+We are only providing the formula of RBF kernal as it is widely used. But, here we are introducing some other types of kernals and their functionality very briefly.
+
+There are different types of kernal. 
+
+$(a)$ RBF (Squared Exponential kernal): Makes the function very smooth and used for natural process like (temperature, elevation etc.). 
+
+$(b)$ Matern kernal: Allows more rough function or curve than the RBF, used for wind speed, river flow etc. 
+
+$(c)$ Linear kernal: Assumes the function is basically a straight line, used for mostly trend patterns say growth trend. 
+
+$(d)$ Periodic kernal: Creates repeating, cyclic functions, mostly used for tides. 
+
+$(e)$ Polynomial kernal: Creates polynomial shaped function, example usage can be for population growth.
+
+Another excellent thing about kernals are that, it is also possible to do  kernals addition and multiplication, but we are not adding the details in this note. Some of the references links will be helpful for more details @UnderstandGP.
+
+**Kernel Parameters**
+
+Of course, we don’t initially know what **σ (signal variance)** or **ℓ (length scale)** should be - 
 we just guess some starting values. The Gaussian Process then uses the training data to 
 automatically adjust these parameters so that the model best explains the observations. 
 This process is called *optimization*: the GP tries different values of σ and ℓ, checking 
@@ -353,7 +367,7 @@ we usually optimize over **log(σ)** and **log(ℓ)** instead of their direct va
 The final optimized σ and ℓ describe how variable and how smooth the data is, respectively.
 
 ## Prediction (Posterior Distribution)
-
+The Gaussian process can be compared to Bayesian concept. The GP says, "before seeing any data, I believe there are infinite number of curves/functions that can fit our data shaped by mean function (center) and kernel (smoothness)". Then we observe the temperature (likelihood) and the curves that passes close to observed points get high likelihood, and curves far away from the data gets low likelihood. And  finally, for the posterior, we get final distribution over funtions with mean and uncertainty.
 The conditional (posterior) distribution of the **test outputs** `y′` given the **training outputs** `y` is **Gaussian**:
 
 $$
@@ -372,17 +386,14 @@ $$
 
 Here:
 
-- **m** → The **posterior mean** — it gives the predicted average function value at each test point.  
-  (This is the black “mean curve” we plot in a Gaussian Process.)
+- **m** → The **posterior mean** - it gives the predicted average function value at each test point.  
+
   
-- **S** → The **posterior covariance matrix** — it gives the uncertainty between predicted points.  
+- **S** → The **posterior covariance matrix** - it gives the uncertainty between predicted points.  
   (The diagonal of **S** determines the width of the shaded uncertainty region around the mean.)
 
 
 In Gaussian Process, we assume the function has a constant mean (μ), meaning both training and testing points share the same average value. This helps the model focus on variations around this mean rather than the overall level. 
-μ = mean(y)   # compute mean from training data.
-a = μ         # mean for test points.
-b = μ         # mean for training points
 
 ```{julia}
 # Squared-exponential kernel, let σ_f=1.0, ℓ=1.0
@@ -455,11 +466,14 @@ title!("1D Gaussian Process Regression")
 
 ```
 
+Note: Why GP is called a non-parametric model?
+
+Ans: Parametric model can have a fixed number of parameters, say for linear regression we have slope and intercept, always 2 parameters.Even if you have 100 or 1000 points, the slope and intercept are always two parameters. But, gaussian process learns the functions/curves from the data. If we give more data points, the function/curves become more detailed, covariance matrix gets bigger and prediction gets more accurate.
 
 # 2D Gaussian Process
 ## Introduction
 
-When we try to analysis the Gaussian Process with the spatial data, simple 1D method is not enough to help. The data now have elevation so the plot need to include z axis, which make the plot into 3D. In this way, 2D Gaussian Process is a good choice to use.
+When we try to analysis the Gaussian Process with the spatial data @InterpolationElevationErrors2015, simple 1D method is not enough to help. The data now have elevation so the plot need to include z axis, which make the plot into 3D. In this way, 2D Gaussian Process is a good choice to use.
 
 2D Gaussian Process is similar to 1D GP so we could have similar process
 1. Choose a kernel depending on the relative of our data (2D)
@@ -566,3 +580,19 @@ let
 end
 
 ```
+
+
+# Pros and Cons
+
+1. Pros:
+ - Uncertainty: predict the entire distribution, confidence interval, and monte carlo possible;
+ - Complexity: hyperparameters are learned by maximizing the log marginal likelihood, which penalizes over complex models;
+ - Computation: efficient for small/medium datasets;
+ - Flexible: approximate extremely complex funtions without specifying a fixed model form
+
+2. Cons:
+ - Cost: computation cost + memory when `n` in the kernal matrix $n*n$ is large
+ - Highly depend on kernal selections
+ - Not well for sharp jumps, need smooth, continuous functions 
+
+# Reference
